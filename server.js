@@ -13,7 +13,13 @@ const port = 3000;
 
 connectDB(); // Connect to MongoDB
 
-app.use(cors());
+const corsOptions = {
+  origin: '*', // Explicitly allow all origins
+  methods: ['GET', 'POST', 'DELETE', 'UPDATE', 'PUT', 'PATCH'] // Optional: Specify which HTTP methods are allowed
+};
+
+app.use(cors(corsOptions));
+
 app.use(bodyParser.json());
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -30,9 +36,9 @@ const server = app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);
 });
 
-// app.get('',(req,res)=>{
-//   res.send('Welcome to Backend')
-// })
+app.get('',(req,res)=>{
+  res.send('Welcome to Backend')
+})
 
 // const io = initSocket(server); // Initialize socket
 
