@@ -68,6 +68,8 @@ exports.createInstance = async (req, res)=>{
       req.body['isActive'] = false
     }
     req.body['access_token'] = access_token;
+    req.body['createdBy'] = req.user.userId;
+
     const instance = new Instance(req.body);
     await instance.save();
     return res.status(201).send(instance);
@@ -82,7 +84,8 @@ exports.listAll = async (req, res)=>{
     const { page = 1, limit = 10 } = req.query;
     const startIndex = (page - 1) * limit;
 
-    const items = await Instance.find().sort({createdAt: -1}).skip(startIndex).limit(limit);
+    
+    const items = await Instance.find({createdBy: req.user.userId}).sort({createdAt: -1}).skip(startIndex).limit(limit);
 
     res.send({
       page,

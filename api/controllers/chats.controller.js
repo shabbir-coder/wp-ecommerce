@@ -318,18 +318,15 @@ const recieveMessages = async (req, res)=>{
 
       const previousChat =  await Message.findOne({
         sender:remoteId, 
-        reciever: recieverId?.number , 
-        // updatedAt: { $gte: start, $lt: end }
+        reciever: recieverId?.number ,
+        instance_id: messageObject?.instance_id,
+        updatedAt: { $gte: start, $lt: end }
       }).sort({updatedAt:-1})
 
-      console.log('previousChat', previousChat)
-      console.log('recieverId', recieverId)
       let useSet;
       if(!previousChat){
-        useSet = await Files.findOne({activeNumbers: { $in :[recieverId?.number] } });
-        console.log('useSet', useSet)
+        useSet = await Files.findOne({uploadedBy: recieverId.createdBy });
         const firstKey = Object.keys(useSet.json[0])[0].toLowerCase();
-        console.log('firstKey', firstKey)
         if (message === firstKey) {
           newMessage.usedFile = useSet._id
           const savedMessage = new Message(newMessage);
@@ -344,13 +341,10 @@ const recieveMessages = async (req, res)=>{
         useSet = await Files.findOne({_id:previousChat.usedFile});
         console.log('useSet', useSet);
         if(!useSet){
-          let activeSet = await Files.findOne({activeNumbers: { $in :[recieverId?.number] } });
-          console.log('activeSet', activeSet);
+          let activeSet = await Files.findOne({uploadedBy: recieverId.createdBy });
           const firstKey = Object.keys(activeSet.json[0])[0].toLowerCase();
-          console.log('firstKey', firstKey);
           const response = await sendMessageFunc({...sendMessageObj,message: `Send ${firstKey.replace('_','')} to start your chat`});
           newMessage.usedFile = activeSet._id
-          console.log('newMessage',newMessage, activeSet._id)
           const savedMessage = new Message(newMessage);
           await savedMessage.save();
           return res.send(true)  

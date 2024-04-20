@@ -120,11 +120,11 @@ exports.getFile = async (req, res) => {
 
 exports.listAllFiles = async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
-    const sets = await File.find({isDeleted:false})
+    const { page = 1, limit = 10} = req.query;
+    const sets = await File.find({isDeleted:false, uploadedBy: req.user.userId})
       .skip((page - 1) * limit)
       .limit(Number(limit));
-    const count = await File.countDocuments({isDeleted:false})
+    const count = await File.countDocuments({isDeleted:false, uploadedBy: req.user.userId})
     return res.status(200).json({data:sets, total: count});
   } catch (error) {
     res.status(500).json({ error: 'Internal Server Error' });
