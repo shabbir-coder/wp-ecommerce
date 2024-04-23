@@ -295,6 +295,7 @@ const recieveMessages = async (req, res)=>{
       let remoteId = messageObject.data.data.messages?.[0]?.key.remoteJid.split('@')[0];
       message = '_'+message.toLowerCase();
       const recieverId = await Instance.findOne({instance_id: messageObject.instance_id})
+
       const newMessage = {
         reciever : ''+recieverId?.number,
         sender: remoteId,
@@ -310,6 +311,13 @@ const recieveMessages = async (req, res)=>{
         instance_id: messageObject?.instance_id,
       }
       
+      if(!recieverId) return res.send(true);
+
+      if(recieverId?.isDeleted){
+        const response = await sendMessageFunc({...sendMessageObj,message: 'Number has been deleted or deactivated by propreiter.'});
+        return res.send(true) 
+      }
+
      let start = new Date();
       start.setHours(0,0,0,0);
 
@@ -325,7 +333,7 @@ const recieveMessages = async (req, res)=>{
 
       let useSet;
       if(!previousChat){
-        useSet = await Files.findOne({uploadedBy: recieverId.createdBy });
+        useSet = await Files.findOne({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
         const firstKey = Object.keys(useSet.json[0])[0].toLowerCase();
         if (message === firstKey) {
           newMessage.usedFile = useSet._id
@@ -338,12 +346,11 @@ const recieveMessages = async (req, res)=>{
           return res.send(true)  
         }
       }else{
-        useSet = await Files.findOne({_id:previousChat.usedFile});
-        console.log('useSet', useSet);
+        useSet = await Files.findOne({_id:previousChat.usedFile,isDeleted:false});
         if(!useSet){
-          let activeSet = await Files.findOne({uploadedBy: recieverId.createdBy });
+          let activeSet = await Files.findOne({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
           const firstKey = Object.keys(activeSet.json[0])[0].toLowerCase();
-          const response = await sendMessageFunc({...sendMessageObj,message: `Send ${firstKey.replace('_','')} to start your chat`});
+          const response = await sendMessageFunc({...sendMessageObj,message: `Your chat is deleted by admin .Send ${firstKey.replace('_','')} to start your new chat`});
           newMessage.usedFile = activeSet._id
           const savedMessage = new Message(newMessage);
           await savedMessage.save();

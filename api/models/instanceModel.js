@@ -15,6 +15,10 @@ const instanceSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
   createdBy: {type: mongoose.Schema.Types.ObjectId},
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },

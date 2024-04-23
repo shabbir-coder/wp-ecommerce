@@ -85,7 +85,7 @@ exports.listAll = async (req, res)=>{
     const startIndex = (page - 1) * limit;
 
     
-    const items = await Instance.find({createdBy: req.user.userId}).sort({createdAt: -1}).skip(startIndex).limit(limit);
+    const items = await Instance.find({createdBy: req.user.userId, isDeleted:false}).sort({createdAt: -1}).skip(startIndex).limit(limit);
 
     res.send({
       page,
@@ -163,7 +163,7 @@ exports.deleteInstance = async (req, res)=>{
 
   try {
     // Find the document by ID and delete it
-    const deletedDoc = await Instance.findByIdAndDelete(id);
+    const deletedDoc = await Instance.findByIdAndUpdate(id, {isDeleted:true});
 
     // If the document does not exist
     if (!deletedDoc) {
