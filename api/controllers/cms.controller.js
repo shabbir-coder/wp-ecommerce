@@ -1,5 +1,5 @@
 const SetModel = require('../models/setModel')
-const File = require('../models/fileModel')
+const {File, Images} = require('../models/fileModel')
 const {clearCache} = require('../middlewares/cache')
 // setController.js
 const dataKey = 'activeSet';
@@ -190,3 +190,80 @@ exports.updateFileStatus = async (req, res) => {
   }
 };
 
+exports.uploadImages = async (req, res) => {
+  if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: 'No images uploaded.' });
+  }
+
+  try {
+      const imageDocs = req.files.map(file => ({
+          keyName: file.filename,
+          imageName: file.originalname,
+          imageType: file.mimetype,
+          imageUrl: file.path  // Assuming you serve static files, adjust URL accordingly
+      }));
+
+      // Create an image collection document
+      const newImageCollection = new Images({
+          fileId: req.params.fileId,
+          images: imageDocs,
+          uploadedBy: req.user.userId  // Assuming 'req.user._id' is set from `authenticateToken`
+      });
+
+      await newImageCollection.save();
+
+      res.status(201).json({
+          message: 'Images uploaded and saved successfully.',
+          imageCollection: newImageCollection
+      });
+  } catch (error) {
+      res.status(500).json({ message: 'Failed to upload images.', error: error.message });
+  }
+};
+
+exports.uploadImageById = async (req, res) => {
+  if (!req.file) {
+      return res.status(400).json({ message: 'No image uploaded.' });
+  }
+
+  const fileId = req.params.fileId; // This should be the '_id' of the ImageCollection
+  const imageId = req.params.ImageId; // Extract imageId from query params
+
+  try {
+      const fileData = {
+          keyName: req.file.filename,
+          imageName: req.file.originalname,
+          imageType: req.file.mimetype,
+          imageUrl: req.file.path  // Adjust URL as necessary
+      };
+
+      let updatedCollection;
+
+      if (imageId) {
+          // Update existing image within the images array
+          updatedCollection = await Images.findOneAndUpdate(
+              { fileId, 'images._id': imageId },
+              { $set: { 'images.$': fileData } },
+              { new: true }
+          );
+      } else {
+          // Push new image to the images array
+          updatedCollection = await Images.findByIdAndUpdate(
+              fileId,
+              { $push: { images: fileData } },
+              { new: true }
+          );
+      }
+
+      if (!updatedCollection) {
+          return res.status(404).json({ message: 'Image collection not found.' });
+      }
+
+      res.status(200).json({
+          message: imageId ? 'Image updated successfully.' : 'Image uploaded and added to collection successfully.',
+          updatedCollection
+      });
+  } catch (error) {
+      res.status(500).json({ message: 'Failed to upload/update image.', error: error.message });
+  }
+};

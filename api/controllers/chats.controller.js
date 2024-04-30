@@ -1,7 +1,7 @@
 // const {getIO} = require('../../connection/socket')
 const axios = require('axios');
 const Instance = require('../models/instanceModel')
-const {Message, Contact, ChatLogs} = require('../models/chatModel');
+const {Message, Contact, ChatLogs, Cart} = require('../models/chatModel');
 const User = require('../models/user');
 const Files = require('../models/fileModel')
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
@@ -318,7 +318,7 @@ const recieveMessages = async (req, res)=>{
         return res.send(true) 
       }
 
-     let start = new Date();
+      let start = new Date();
       start.setHours(0,0,0,0);
 
       let end = new Date();
@@ -331,44 +331,133 @@ const recieveMessages = async (req, res)=>{
         updatedAt: { $gte: start, $lt: end }
       }).sort({updatedAt:-1})
 
+      console.log('previousChat', previousChat);
+
       let useSet;
       if(!previousChat){
-        useSet = await Files.findOne({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
-        const firstKey = Object.keys(useSet.json[0])[0].toLowerCase();
-        if (message === firstKey) {
-          newMessage.usedFile = useSet._id
-          const savedMessage = new Message(newMessage);
-          await savedMessage.save();
-          const response = await sendMessageFunc({...sendMessageObj,message: useSet.json[0][firstKey]});
-          return res.send(true) 
-        }else{
-          const response = await sendMessageFunc({...sendMessageObj,message: `Send ${firstKey.replace('_','')} to start your chat`});
-          return res.send(true)  
+        useSet = await Files.find({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
+        console.log(useSet)
+        for (const set of useSet) {
+          const firstKey = set.startingKeyword.toLowerCase();
+          if (message === firstKey) {
+              console.log('step 1')
+              newMessage.usedFile = set._id;
+              const savedMessage = new Message(newMessage);
+              await savedMessage.save();
+              const response = await sendMessageFunc(
+                {...sendMessageObj,
+                  message: set.json.find(obj => obj?.key === firstKey)?.value});
+              return res.send(true);
+          } else {
+              // const response = await sendMessageFunc({...sendMessageObj, message: `Send ${firstKey.replace('_', '')} to start your chat`});
+              console.log('step 2')
+              return res.send(true);
+          }
         }
       }else{
         useSet = await Files.findOne({_id:previousChat.usedFile,isDeleted:false});
         if(!useSet){
-          let activeSet = await Files.findOne({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
-          const firstKey = Object.keys(activeSet.json[0])[0].toLowerCase();
-          const response = await sendMessageFunc({...sendMessageObj,message: `Your chat is deleted by admin .Send ${firstKey.replace('_','')} to start your new chat`});
-          newMessage.usedFile = activeSet._id
+          console.log('step 3')
+          const response = await sendMessageFunc({...sendMessageObj,message: `Your chat is deleted by admin.`});
+          return res.send(true)  
+        }
+        console.log('step 4')
+        newMessage.usedFile = useSet._id;
+        console.log('step 5')
+        let reply = useSet.json.find(obj => obj?.key === message)?.value;
+        if(reply){
+          console.log('step 6')
+          const response = await sendMessageFunc({...sendMessageObj,message: reply});
           const savedMessage = new Message(newMessage);
           await savedMessage.save();
-          return res.send(true)  
-        }
-        newMessage.usedFile = useSet._id
-        const savedMessage = new Message(newMessage);
-        await savedMessage.save();
-        let reply = useSet.json[0][message]
-        if(reply){
-          const response = await sendMessageFunc({...sendMessageObj,message: reply});
-          return res.send(true)  
+          return res.send(true);
         }else{
+          if(message==='_buy'){
+            if(useSet.json.find(obj => obj?.key === previousChat.text)?.price){
+              previousChat.isBuyingRequest=true;
+              await previousChat.save();
+              const response = await sendMessageFunc({...sendMessageObj, message: 'Provide quantity , type only the unit of quanity you want.'});
+            }else{
+              const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code first.'});
+            }
+            return res.send(true); 
+          }
+          if(/^\d+$/.test(parseInt(message.replace('_','')))){
+            if(!previousChat.isBuyingRequest){
+              const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code then type \'buy\' first.'});
+              return res.send(true); 
+            }
+            const carts = await Cart.find({userNumber: remoteId, status:'inCart', _id: { $ne: previousChat?.cartId },product : {$ne: previousChat.text}});
+            let grandTotal = 0;
+            carts?.forEach(item => grandTotal += parseInt(item?.total));
+
+            let product = useSet.json.find(obj => obj?.key === previousChat.text);
+            const previousCart = await Cart.findOne({
+              userNumber: remoteId,
+              product : previousChat.text,
+              instance_id : messageObject?.instance_id,
+              status : 'inCart'
+            });
+            if(previousCart){
+              previousCart.quantity = message.replace('_','');
+              previousCart.total = (+product?.price)*(+message.replace('_',''));
+              let cartSummary = `Your Total till now : ${+grandTotal+(+previousCart.total)}\r\n`;
+              const replyMessage = `Product ${previousChat.text} has been added to your cart\r\n` +
+              `${previousCart.product} x ${previousCart.quantity} = ${previousCart.total}  ( ${product.price} )\r\n\r\n` +
+              cartSummary +
+              `Type 'Cart' to check your cart` ;
+              
+              await previousCart.save()
+              const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
+              return res.send(true);
+
+            }else{
+
+              const newCart = { 
+                userNumber: remoteId,
+                product : previousChat.text,
+                price : product?.price,
+                quantity : message.replace('_',''),
+                total: (+product?.price)*(+message.replace('_','')),
+                status : 'inCart',
+                instance_id : messageObject?.instance_id
+              }
+              let cartSummary = `Your Total till now : ${+grandTotal+(+newCart.total)}\r\n`;
+              const replyMessage = `Product ${previousChat.text} has been added to your cart\r\n` +
+              `${newCart.product} x ${newCart.quantity} = ${newCart.total}  ( ${newCart.price} each )\r\n\r\n` +
+              cartSummary +
+              `Type 'Cart' to check your cart` ;
+  
+              const cartData = await new Cart(newCart).save();
+              await previousChat.save();
+  
+              const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
+              return res.send(true);
+            }
+            
+          }
+
+          if(['_total','_cart'].includes(message)){
+            const carts = await Cart.find({userNumber: remoteId, status:'inCart'});
+            if(!carts.length){
+              const response = await sendMessageFunc({...sendMessageObj,message: 'No cart found!, Type \'Products\' and start shopping '});
+              return res.send(true);    
+            }
+            let grandTotal = 0;
+            carts.forEach(item => grandTotal += parseInt(item.total));
+            let cartSummary = "product ------ quantity x price = total\r\n\r\n";
+            carts.forEach(item => {
+                cartSummary += `${item.product} ------ ${item.quantity} x ${item.price} = ${item.total}\r\n`;
+            });
+            cartSummary += `\r\nGrand Total: ${grandTotal}`;
+            const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
+            return res.send(true);  
+          }
+          if(message==='_total'){}
           const response = await sendMessageFunc({...sendMessageObj,message: 'Invalid input'});
-          return res.send(true)   
+          return res.send(true);  
         }
       }
-      return res.send(true);
     }else{
       return res.send(true);
     }
@@ -381,6 +470,7 @@ const recieveMessages = async (req, res)=>{
 }
 
 const sendMessageFunc = async (message)=>{
+  console.log('message',message)
   const url = process.env.LOGIN_CB_API
   const access_token = process.env.ACCESS_TOKEN_CB
   const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
