@@ -3,7 +3,7 @@ const axios = require('axios');
 const Instance = require('../models/instanceModel')
 const {Message, Contact, ChatLogs, Cart} = require('../models/chatModel');
 const User = require('../models/user');
-const Files = require('../models/fileModel')
+const {File} = require('../models/fileModel')
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const fs = require('fs')
 const { getCachedData } = require('../middlewares/cache');
@@ -295,7 +295,7 @@ const recieveMessages = async (req, res)=>{
       let remoteId = messageObject.data.data.messages?.[0]?.key.remoteJid.split('@')[0];
       message = '_'+message.toLowerCase();
       const recieverId = await Instance.findOne({instance_id: messageObject.instance_id})
-
+      console.log('instance_id', messageObject.instance_id)
       const newMessage = {
         reciever : ''+recieverId?.number,
         sender: remoteId,
@@ -310,6 +310,8 @@ const recieveMessages = async (req, res)=>{
         type: 'text',
         instance_id: messageObject?.instance_id,
       }
+
+      console.log('recieverId',recieverId)
       
       if(!recieverId) return res.send(true);
 
@@ -335,7 +337,7 @@ const recieveMessages = async (req, res)=>{
 
       let useSet;
       if(!previousChat){
-        useSet = await Files.find({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
+        useSet = await File.find({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
         console.log(useSet)
         for (const set of useSet) {
           const firstKey = set.startingKeyword.toLowerCase();
@@ -355,7 +357,7 @@ const recieveMessages = async (req, res)=>{
           }
         }
       }else{
-        useSet = await Files.findOne({_id:previousChat.usedFile,isDeleted:false});
+        useSet = await File.findOne({_id:previousChat.usedFile,isDeleted:false});
         if(!useSet){
           console.log('step 3')
           const response = await sendMessageFunc({...sendMessageObj,message: `Your chat is deleted by admin.`});
@@ -445,9 +447,9 @@ const recieveMessages = async (req, res)=>{
             }
             let grandTotal = 0;
             carts.forEach(item => grandTotal += parseInt(item.total));
-            let cartSummary = "product ------ quantity x price = total\r\n\r\n";
+            let cartSummary = "product ---- qty x price = total\r\n\r\n";
             carts.forEach(item => {
-                cartSummary += `${item.product} ------ ${item.quantity} x ${item.price} = ${item.total}\r\n`;
+                cartSummary += `${item.product} ------ ${item.quantity} x ${item.price} ==== ${item.total}\r\n`;
             });
             cartSummary += `\r\nGrand Total: ${grandTotal}`;
             const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
