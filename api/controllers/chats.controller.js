@@ -334,7 +334,6 @@ const recieveMessages = async (req, res)=>{
       let useSet;
       if(!previousChat){
         useSet = await File.find({uploadedBy: recieverId.createdBy ,status:'active', isDeleted:false});
-        console.log(useSet)
         for (const set of useSet) {
           const firstKey = set.startingKeyword.toLowerCase();
           if (message === firstKey) {
@@ -360,13 +359,20 @@ const recieveMessages = async (req, res)=>{
         let replyObj = useSet.json.find(obj => obj?.key === message);
         if(replyObj){
           if(replyObj?.price){
-            const imageUsed = await Images.findOne({fileId: useSet._id} ); 
-            const image = imageUsed.images?.find((ele=>ele.keyName === message.replace('_','')))
-            console.log(image)
+            const image = await Images.findOne(
+              { 
+                fileId: useSet._id,
+                "images.keyName": message.replace('_', '')
+              },
+              { 
+                "images.$": 1 
+              }
+            );
+            console.log(image?.images[0])
             if(image){
               sendMessageObj.type='media',
-              sendMessageObj.media_url= process.env.IMAGE_URL + image?.imageUrl,
-              sendMessageObj.filename = image?.imageName
+              sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
+              sendMessageObj.filename = image?.images[0]?.imageName
             }
           }
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
