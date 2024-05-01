@@ -3,7 +3,7 @@ const axios = require('axios');
 const Instance = require('../models/instanceModel')
 const {Message, Contact, ChatLogs, Cart} = require('../models/chatModel');
 const User = require('../models/user');
-const {File} = require('../models/fileModel')
+const {File, Images} = require('../models/fileModel')
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const fs = require('fs')
 const { getCachedData } = require('../middlewares/cache');
@@ -295,7 +295,6 @@ const recieveMessages = async (req, res)=>{
       let remoteId = messageObject.data.data.messages?.[0]?.key.remoteJid.split('@')[0];
       message = '_'+message.toLowerCase();
       const recieverId = await Instance.findOne({instance_id: messageObject.instance_id})
-      console.log('instance_id', messageObject.instance_id)
       const newMessage = {
         reciever : ''+recieverId?.number,
         sender: remoteId,
@@ -310,8 +309,6 @@ const recieveMessages = async (req, res)=>{
         type: 'text',
         instance_id: messageObject?.instance_id,
       }
-
-      console.log('recieverId',recieverId)
       
       if(!recieverId) return res.send(true);
 
@@ -333,7 +330,6 @@ const recieveMessages = async (req, res)=>{
         updatedAt: { $gte: start, $lt: end }
       }).sort({updatedAt:-1})
 
-      console.log('previousChat', previousChat);
 
       let useSet;
       if(!previousChat){
@@ -342,7 +338,6 @@ const recieveMessages = async (req, res)=>{
         for (const set of useSet) {
           const firstKey = set.startingKeyword.toLowerCase();
           if (message === firstKey) {
-              console.log('step 1')
               newMessage.usedFile = set._id;
               const savedMessage = new Message(newMessage);
               await savedMessage.save();
@@ -352,24 +347,29 @@ const recieveMessages = async (req, res)=>{
               return res.send(true);
           } else {
               // const response = await sendMessageFunc({...sendMessageObj, message: `Send ${firstKey.replace('_', '')} to start your chat`});
-              console.log('step 2')
               return res.send(true);
           }
         }
       }else{
         useSet = await File.findOne({_id:previousChat.usedFile,isDeleted:false});
         if(!useSet){
-          console.log('step 3')
           const response = await sendMessageFunc({...sendMessageObj,message: `Your chat is deleted by admin.`});
           return res.send(true)  
         }
-        console.log('step 4')
         newMessage.usedFile = useSet._id;
-        console.log('step 5')
-        let reply = useSet.json.find(obj => obj?.key === message)?.value;
-        if(reply){
-          console.log('step 6')
-          const response = await sendMessageFunc({...sendMessageObj,message: reply});
+        let replyObj = useSet.json.find(obj => obj?.key === message);
+        if(replyObj){
+          if(replyObj?.price){
+            const imageUsed = await Images.findOne({fileId: useSet._id} ); 
+            const image = imageUsed.images?.find((ele=>ele.keyName === message.replace('_','')))
+            console.log(image)
+            if(image){
+              sendMessageObj.type='media',
+              sendMessageObj.media_url= process.env.IMAGE_URL + image?.imageUrl,
+              sendMessageObj.filename = image?.imageName
+            }
+          }
+          const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
           const savedMessage = new Message(newMessage);
           await savedMessage.save();
           return res.send(true);
@@ -467,7 +467,7 @@ const recieveMessages = async (req, res)=>{
   } catch (error) {
     console.error(error);
 
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error });
   } 
 }
 

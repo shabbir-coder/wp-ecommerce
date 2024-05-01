@@ -197,29 +197,49 @@ exports.uploadImages = async (req, res) => {
 
   try {
       const imageDocs = req.files.map(file => ({
-          keyName: file.filename,
+          keyName: file.filename.split('.')[0],
           imageName: file.originalname,
           imageType: file.mimetype,
           imageUrl: file.path  // Assuming you serve static files, adjust URL accordingly
       }));
 
-      // Create an image collection document
-      const newImageCollection = new Images({
+        // Prepare new image collection document data
+        const newImageData = {
           fileId: req.params.fileId,
           images: imageDocs,
-          uploadedBy: req.user.userId  // Assuming 'req.user._id' is set from `authenticateToken`
-      });
-
-      await newImageCollection.save();
+          uploadedBy: req.user.userId  // Assuming 'req.user.userId' is set from `authenticateToken`
+      };
+            // Find an existing document with the same fileId and replace it, or insert a new one if it does not exist
+      const options = { upsert: true, new: true, runValidators: true };
+      const imageCollection = await Images.findOneAndReplace({ fileId: req.params.fileId }, newImageData, options);
 
       res.status(201).json({
           message: 'Images uploaded and saved successfully.',
-          imageCollection: newImageCollection
+          imageCollection
       });
   } catch (error) {
       res.status(500).json({ message: 'Failed to upload images.', error: error.message });
   }
 };
+
+exports.getAllImages = async (req, res) => {
+  const fileId = req.params.fileId;
+  try {
+    // Find the image collection document based on fileId
+    const imageCollection = await Images.findOne({ fileId });
+
+    if (!imageCollection) {
+      return res.status(404).json({ message: 'No images found for the provided fileId.' });
+    }
+
+    res.status(200).json({
+      message: 'Images retrieved successfully.',
+      images: imageCollection.images
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to retrieve images.', error: error.message });
+  }
+}
 
 exports.uploadImageById = async (req, res) => {
   if (!req.file) {
