@@ -3,7 +3,7 @@ const axios = require('axios');
 const Instance = require('../models/instanceModel')
 const {Message, Contact, ChatLogs, Cart} = require('../models/chatModel');
 const User = require('../models/user');
-const {File, Images} = require('../models/fileModel')
+const {File, Images, chatConfig} = require('../models/fileModel')
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const fs = require('fs')
 const { getCachedData } = require('../middlewares/cache');
@@ -351,6 +351,7 @@ const recieveMessages = async (req, res)=>{
         }
       }else{
         useSet = await File.findOne({_id:previousChat.usedFile,isDeleted:false});
+        let config = await chatConfig.findOne({createdBy: useSet.uploadedBy}) 
         if(!useSet){
           const response = await sendMessageFunc({...sendMessageObj,message: `Your chat is deleted by admin.`});
           return res.send(true)  
@@ -373,6 +374,7 @@ const recieveMessages = async (req, res)=>{
               sendMessageObj.type='media',
               sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
               sendMessageObj.filename = image?.images[0]?.imageName
+              replyObj.value += '\n Type "Buy" to purchase product'
             }
           }
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
@@ -430,11 +432,11 @@ const recieveMessages = async (req, res)=>{
                 status : 'inCart',
                 instance_id : messageObject?.instance_id
               }
-              let cartSummary = `Your Total till now : ${+grandTotal+(+newCart.total)}\r\n`;
-              const replyMessage = `Product ${previousChat.text} has been added to your cart\r\n` +
-              `${newCart.product} x ${newCart.quantity} = ${newCart.total}  ( ${newCart.price} each )\r\n\r\n` +
+              let cartSummary = `*Your Total till now :* ${+grandTotal+(+newCart.total)}\r\n`;
+              const replyMessage = `✨ *Product ${previousChat.text}* has been added to your cart\r\n` +
+              `${newCart.product} x ${newCart.quantity} = *${newCart.total}*  _( ${newCart.price} each )_\r\n\r\n` +
               cartSummary +
-              `Type 'Cart' to check your cart` ;
+              `Type *'Cart'* to check your cart` ;
   
               const cartData = await new Cart(newCart).save();
               await previousChat.save();
@@ -444,8 +446,8 @@ const recieveMessages = async (req, res)=>{
             }
             
           }
+          if(message === '_' + config.CartKeyword.toLowerCase()){
 
-          if(['_total','_cart'].includes(message)){
             const carts = await Cart.find({userNumber: remoteId, status:'inCart'});
             if(!carts.length){
               const response = await sendMessageFunc({...sendMessageObj,message: 'No cart found!, Type \'Products\' and start shopping '});
@@ -453,17 +455,18 @@ const recieveMessages = async (req, res)=>{
             }
             let grandTotal = 0;
             carts.forEach(item => grandTotal += parseInt(item.total));
-            let cartSummary = "product ---- qty x price = total\r\n\r\n";
-            carts.forEach(item => {
-                cartSummary += `${item.product} ------ ${item.quantity} x ${item.price} ==== ${item.total}\r\n`;
+            let cartSummary = "_product ---- qty x price = total_\r\n\r\n";
+            carts.forEach((item, i) => {
+                cartSummary += `${i+1} - _${item.product}_ ------ ${item.quantity} x ${item.price} ==== *${item.total}*\r\n`;
             });
-            cartSummary += `\r\nGrand Total: ${grandTotal}`;
+            cartSummary += `\r\n*Grand Total: ${grandTotal}*`;
             const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
             return res.send(true);  
           }
-          if(message==='_total'){}
-          const response = await sendMessageFunc({...sendMessageObj,message: 'Invalid input'});
-          return res.send(true);  
+          if(message==='_' + config.paymentKeyword.toLowerCase()){
+            const response = await sendMessageFunc({...sendMessageObj,message: config.paymentLink});
+            return res.send(true);  
+          }
         }
       }
     }else{
@@ -481,8 +484,8 @@ const sendMessageFunc = async (message)=>{
   console.log('message',message)
   const url = process.env.LOGIN_CB_API
   const access_token = process.env.ACCESS_TOKEN_CB
-  const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
-  // const response = 'message send'
+  // const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
+  const response = 'message send'
   return response;
 }
 

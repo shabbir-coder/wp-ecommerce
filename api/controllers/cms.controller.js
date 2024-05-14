@@ -1,5 +1,5 @@
 const SetModel = require('../models/setModel')
-const {File, Images} = require('../models/fileModel')
+const {File, Images, chatConfig} = require('../models/fileModel')
 const {clearCache} = require('../middlewares/cache')
 // setController.js
 const dataKey = 'activeSet';
@@ -287,3 +287,34 @@ exports.uploadImageById = async (req, res) => {
       res.status(500).json({ message: 'Failed to upload/update image.', error: error.message });
   }
 };
+
+exports.createChatConfig = async (req, res) => {
+  try {
+    const createdBy = req.user.userId;
+    let chatForm = await chatConfig.findOne({ createdBy });
+
+    if (!chatForm) {
+        // If no chat form exists for the user, create a new one
+        chatForm = new chatConfig({ ...req.body, createdBy });
+        await chatForm.save();
+        res.status(201).json(chatForm);
+    } else {
+        // If a chat form already exists, update it
+        chatForm = await chatConfig.findOneAndUpdate({ createdBy }, req.body, { new: true });
+        res.json(chatForm);
+    }
+} catch (error) {
+    return res.status(400).json({ message: error.message });
+}
+
+}
+exports.getChatConfig = async (req, res)=>{
+  try {
+    const createdBy = req.user.userId;
+    let chatForm = await chatConfig.findOne({ createdBy });
+    return res.status(201).json({data: chatForm});
+
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}

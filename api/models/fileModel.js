@@ -32,9 +32,25 @@ const imagesCollectionSchema = new mongoose.Schema({
   uploadedBy: {type: mongoose.Schema.Types.ObjectId },
 }, { timestamps: true });
 
+
+
+const chatConfigSchema = new mongoose.Schema({
+  paymentOptions: { type: String, required: false },
+  QRLink: { type: String, required: false },
+  paymentLink: { type: String, required: false },
+  sessionDuration: {
+      hours: { type: Number, required: true },
+      minutes: { type: Number, required: true }
+  },
+  CartKeyword: { type: String, required: true },
+  paymentKeyword: { type: String, required: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, required: true }
+});
+
 const File = mongoose.model('File', fileSchema);
 const Images = mongoose.model('imagesCollection', imagesCollectionSchema);
+const chatConfig = mongoose.model('ChatConfig', chatConfigSchema);
 
-module.exports = { File , Images};
+module.exports = { File, Images, chatConfig};
 
 

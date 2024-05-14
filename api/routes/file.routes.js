@@ -4,7 +4,6 @@ const cmsController = require('../controllers/cms.controller');
 const { authenticateToken } = require('../middlewares/auth');
 const multer = require('multer');
 const fs = require('fs');
-
 const router = express.Router();
 
 // Set up storage strategy for Multer
@@ -59,16 +58,17 @@ const FileStorage = multer.diskStorage({
   const imagesUpload = multer({ storage: imageStorage });
 
 
+  router.get('',  authenticateToken, cmsController.listAllFiles);
 
-router.get('',  authenticateToken, cmsController.listAllFiles);
-router.get('/:id', authenticateToken, cmsController.getFile);
-router.post('/upload', authenticateToken , upload.single('file'), cmsController.uploadFile);
-router.delete('/:id', authenticateToken, cmsController.deleteFile);
-router.post('/:id/status', authenticateToken, cmsController.updateFileStatus);
+  router.post('/chatConfig', authenticateToken, cmsController.createChatConfig);
+  router.get('/chatConfig', authenticateToken, cmsController.getChatConfig);
+  router.get('/:id', authenticateToken, cmsController.getFile);
+  router.post('/upload', authenticateToken , upload.single('file'), cmsController.uploadFile);
+  router.delete('/:id', authenticateToken, cmsController.deleteFile);
+  router.post('/:id/status', authenticateToken, cmsController.updateFileStatus);
 
-router.post('/upload/images/:fileId', authenticateToken, imagesUpload.array('images'), cmsController.uploadImages);
-router.post('/upload/image/:fileId/:ImageId', authenticateToken, imagesUpload.single('image'), cmsController.uploadImageById);
-router.get('/images/:fileId', authenticateToken, cmsController.getAllImages);
-
+  router.post('/upload/images/:fileId', authenticateToken, imagesUpload.array('images'), cmsController.uploadImages);
+  router.post('/upload/image/:fileId/:ImageId', authenticateToken, imagesUpload.single('image'), cmsController.uploadImageById);
+  router.get('/images/:fileId', authenticateToken, cmsController.getAllImages);
 
 module.exports = router;
