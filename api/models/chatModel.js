@@ -46,7 +46,7 @@ const cartSchema = new mongoose.Schema({
   status: {type: String, enum: Object.values(CartStatus)},
   isRemoved: {type: Boolean , default: false},
   instance_id: {type: String}
-})
+}, { timestamps: true })
 
 const purchases = new mongoose.Schema({
   userNumber: {type: String},
@@ -56,7 +56,7 @@ const purchases = new mongoose.Schema({
   status: {type: String},
   isRemoved: {type: Boolean , default: false},
   instance_id: {type: String}
-})
+}, { timestamps: true })
 
 const ChatLogs = mongoose.model('chatLogs', chatLogs);
 const Contact = mongoose.model('contact', contactSchema);

@@ -310,12 +310,22 @@ const recieveMessages = async (req, res)=>{
         instance_id: messageObject?.instance_id,
       }
       
+      console.log(recieverId)
+
       if(!recieverId) return res.send(true);
 
       if(recieverId?.isDeleted){
         const response = await sendMessageFunc({...sendMessageObj,message: 'Number has been deleted or deactivated by propreiter.'});
         return res.send(true) 
       }
+      
+      let config = await chatConfig.findOne({createdBy: recieverId.createdBy}) 
+      let { hours, minutes } = config.sessionDuration;
+
+      let nowTime = new Date();
+      let sessionDurationMillis = (hours * 60 * 60 * 1000) + (minutes * 60 * 1000);
+
+      let sessionStartTime = new Date(nowTime.getTime() - sessionDurationMillis);
 
       let start = new Date();
       start.setHours(0,0,0,0);
@@ -327,7 +337,7 @@ const recieveMessages = async (req, res)=>{
         sender:remoteId, 
         reciever: recieverId?.number ,
         instance_id: messageObject?.instance_id,
-        updatedAt: { $gte: start, $lt: end }
+        updatedAt: { $gte: sessionStartTime, $lt: nowTime }
       }).sort({updatedAt:-1})
 
 
@@ -351,7 +361,6 @@ const recieveMessages = async (req, res)=>{
         }
       }else{
         useSet = await File.findOne({_id:previousChat.usedFile,isDeleted:false});
-        let config = await chatConfig.findOne({createdBy: useSet.uploadedBy}) 
         if(!useSet){
           const response = await sendMessageFunc({...sendMessageObj,message: `Your chat is deleted by admin.`});
           return res.send(true)  
@@ -374,7 +383,7 @@ const recieveMessages = async (req, res)=>{
               sendMessageObj.type='media',
               sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
               sendMessageObj.filename = image?.images[0]?.imageName
-              replyObj.value += '\n Type "Buy" to purchase product'
+              replyObj.value += '\nType "Buy" to purchase product'
             }
           }
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
@@ -397,7 +406,14 @@ const recieveMessages = async (req, res)=>{
               const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code then type \'buy\' first.'});
               return res.send(true); 
             }
-            const carts = await Cart.find({userNumber: remoteId, status:'inCart', _id: { $ne: previousChat?.cartId },product : {$ne: previousChat.text}});
+            const carts = await Cart.find({
+              userNumber: remoteId,
+              status:'inCart', 
+              _id: { $ne: previousChat?.cartId },
+              product : {$ne: previousChat.text},
+              updatedAt: { $gte: sessionStartTime, $lt: nowTime }
+            });
+            console.log('carts',carts)
             let grandTotal = 0;
             carts?.forEach(item => grandTotal += parseInt(item?.total));
 
@@ -406,16 +422,17 @@ const recieveMessages = async (req, res)=>{
               userNumber: remoteId,
               product : previousChat.text,
               instance_id : messageObject?.instance_id,
-              status : 'inCart'
+              status : 'inCart',
+              updatedAt: { $gte: sessionStartTime, $lt: nowTime }
             });
             if(previousCart){
               previousCart.quantity = message.replace('_','');
               previousCart.total = (+product?.price)*(+message.replace('_',''));
-              let cartSummary = `Your Total till now : ${+grandTotal+(+previousCart.total)}\r\n`;
-              const replyMessage = `Product ${previousChat.text} has been added to your cart\r\n` +
-              `${previousCart.product} x ${previousCart.quantity} = ${previousCart.total}  ( ${product.price} )\r\n\r\n` +
+              let cartSummary = `*Your Total till now :* ${+grandTotal+(+previousCart.total)}\r\n`;
+              const replyMessage = `✨✨ *Product ${previousChat.text.replace('_','')}* has been added to your cart\r\n` +
+              `${previousCart.product.replace('_','')} x ${previousCart.quantity} = *${previousCart.total}*  _( ${product.price} )_\r\n\r\n` +
               cartSummary +
-              `Type 'Cart' to check your cart` ;
+              `Type *'${config.CartKeyword}'* to check your cart` ;
               
               await previousCart.save()
               const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
@@ -433,13 +450,11 @@ const recieveMessages = async (req, res)=>{
                 instance_id : messageObject?.instance_id
               }
               let cartSummary = `*Your Total till now :* ${+grandTotal+(+newCart.total)}\r\n`;
-              const replyMessage = `✨ *Product ${previousChat.text}* has been added to your cart\r\n` +
-              `${newCart.product} x ${newCart.quantity} = *${newCart.total}*  _( ${newCart.price} each )_\r\n\r\n` +
-              cartSummary +
-              `Type *'Cart'* to check your cart` ;
+              const replyMessage = `✨ *Product ${previousChat.text.replace('_','')}* has been added to your cart\r\n` +
+              `${newCart.product.replace('_','')} x ${newCart.quantity} = *${newCart.total}*  _( ${newCart.price} each )_\r\n\r\n` +
+              cartSummary + `Type *'${config.CartKeyword}'* to check your cart` ;
   
               const cartData = await new Cart(newCart).save();
-              await previousChat.save();
   
               const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
               return res.send(true);
@@ -448,7 +463,7 @@ const recieveMessages = async (req, res)=>{
           }
           if(message === '_' + config.CartKeyword.toLowerCase()){
 
-            const carts = await Cart.find({userNumber: remoteId, status:'inCart'});
+            const carts = await Cart.find({userNumber: remoteId, status:'inCart', updatedAt: { $gte: sessionStartTime, $lt: nowTime }});
             if(!carts.length){
               const response = await sendMessageFunc({...sendMessageObj,message: 'No cart found!, Type \'Products\' and start shopping '});
               return res.send(true);    
@@ -457,15 +472,60 @@ const recieveMessages = async (req, res)=>{
             carts.forEach(item => grandTotal += parseInt(item.total));
             let cartSummary = "_product ---- qty x price = total_\r\n\r\n";
             carts.forEach((item, i) => {
-                cartSummary += `${i+1} - _${item.product}_ ------ ${item.quantity} x ${item.price} ==== *${item.total}*\r\n`;
+                cartSummary += `${i+1} - ${item.product}_ ------ ${item.quantity} x ${item.price} ==== *${item.total}*\r\n`;
             });
             cartSummary += `\r\n*Grand Total: ${grandTotal}*`;
+            cartSummary += `\r\n\r\nTo remove product from your ${config?.CartKeyword}, type *remove product code* . Example 'remove de1p1'.`;
+            cartSummary += `\r\nType *${config.paymentKeyword}* to pay and confirm your order`
             const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
             return res.send(true);  
           }
           if(message==='_' + config.paymentKeyword.toLowerCase()){
             const response = await sendMessageFunc({...sendMessageObj,message: config.paymentLink});
             return res.send(true);  
+          }
+          if(/_remove/i.test(message)){
+            const product = message.split(' ')
+            if(!product[1]){
+              const response = await sendMessageFunc({...sendMessageObj,message: `*Product* *not found* in your ${config?.CartKeyword}`});
+              return res.send(true);  
+            }
+            const cart = await Cart.findOne({
+              userNumber: remoteId,
+              product:'_'+product[1],
+              status:'inCart',
+              updatedAt: { $gte: sessionStartTime, $lt: nowTime }
+            });
+            console.log(cart)
+            if(!cart){
+              const response = await sendMessageFunc({...sendMessageObj,message: `*Product-${product[1]}* *not found* in your ${config?.CartKeyword}`});
+              return res.send(true);  
+            }else{
+              cart.isRemoved = true;
+              cart.status = 'isRemoved'
+              console.log(cart)
+              await cart.save();
+
+              let cartSummary = `*Product-${product[1]}* *removed* from your ${config?.CartKeyword}`;
+              cartSummary += '\r\nYour updated cart is as follows 👇\r\n\r\n'
+              const carts = await Cart.find({userNumber: remoteId, status:'inCart', updatedAt: { $gte: sessionStartTime, $lt: nowTime }});
+            if(!carts.length){
+              const response = await sendMessageFunc({...sendMessageObj,message: 'No cart found!, Type \'Products\' and start shopping '});
+              return res.send(true);    
+            }
+            let grandTotal = 0;
+            carts.forEach(item => grandTotal += parseInt(item.total));
+            cartSummary += "_product ---- qty x price = total_\r\n\r\n";
+            carts.forEach((item, i) => {
+                cartSummary += `${i+1} - ${item.product}_ ------ ${item.quantity} x ${item.price} ==== *${item.total}*\r\n`;
+            });
+            cartSummary += `\r\n*Grand Total: ${grandTotal}*`;
+            cartSummary += `\r\n\r\nTo remove product from your ${config?.CartKeyword}, type *remove product code* . Example 'remove de1p1'.`;
+            cartSummary += `\r\nType *${config.paymentKeyword}* to pay and confirm your order`
+            const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
+            return res.send(true);
+
+            }
           }
         }
       }
@@ -484,8 +544,7 @@ const sendMessageFunc = async (message)=>{
   console.log('message',message)
   const url = process.env.LOGIN_CB_API
   const access_token = process.env.ACCESS_TOKEN_CB
-  // const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
-  const response = 'message send'
+  const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
   return response;
 }
 
