@@ -401,8 +401,7 @@ const sendMessageFunc = async (message)=>{
   console.log('message',message)
   const url = process.env.LOGIN_CB_API
   const access_token = process.env.ACCESS_TOKEN_CB
-  // const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
-  // console.log( 'response', response);
+  const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
   return true;
 }
 
