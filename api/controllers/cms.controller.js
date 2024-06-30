@@ -198,7 +198,7 @@ exports.uploadImages = async (req, res) => {
 
   try {
       const imageDocs = req.files.map(file => ({
-          keyName: file.filename.split('.')[0],
+          keyName: file.filename.split('.')[0]?.toLowerCase(),
           imageName: file.originalname,
           imageType: file.mimetype,
           imageUrl: file.path  // Assuming you serve static files, adjust URL accordingly
