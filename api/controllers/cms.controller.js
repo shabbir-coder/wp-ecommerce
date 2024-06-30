@@ -141,6 +141,7 @@ exports.uploadFile = async (req, res) => {
       contentType: mimetype,
       url: path,
       json: json,
+      startingKeyword: json[0].key,
       uploadedBy: req.user.userId
     });
     await newFile.save();

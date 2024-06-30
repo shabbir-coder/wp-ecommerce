@@ -41,6 +41,7 @@ const recieveMessages = async (req, res)=>{
         number: remoteId,
         type: 'text',
         instance_id: messageObject?.instance_id,
+        access_token: recieverId?.access_token
       }
       
       console.log(recieverId)
@@ -116,7 +117,7 @@ const recieveMessages = async (req, res)=>{
               sendMessageObj.type='media',
               sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
               sendMessageObj.filename = image?.images[0]?.imageName
-              replyObj.value += '\nType "Buy" to purchase product'
+              replyObj.value += '\nType *Buy-Quantity* (nos of units) to Purchase the product or Type *Detail* for more information'
             }
           }
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
@@ -124,74 +125,32 @@ const recieveMessages = async (req, res)=>{
           await savedMessage.save();
           return res.send(true);
         }else{
-          if(message==='_buy'){
+          console.log(message)
+          if(/^_buy([- ]?\d+)?$/.test(message)){
             if(useSet.json.find(obj => obj?.key === previousChat.text)?.price){
+              const messageArr = message.split(/[- ]/);
               previousChat.isBuyingRequest=true;
               await previousChat.save();
-              const response = await sendMessageFunc({...sendMessageObj, message: 'Provide quantity , type only the unit of quanity you want.'});
+              if(messageArr[1]){
+                await handleCart(remoteId,useSet, previousChat, sessionStartTime, nowTime, messageArr[1], messageObject,
+                  sendMessageObj, config)
+                  return res.send('cart updated')
+              }else{
+                const response = await sendMessageFunc({...sendMessageObj, message: 'Type the *Quantity* you want to buy'});
+              }
             }else{
               const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code first.'});
             }
             return res.send(true); 
           }
-          if(/^(100|[1-9][0-9]?)$/.test(parseInt(message.replace('_','')))){
+          if(/^(1000|[1-9][0-9]?)$/.test(parseInt(message.replace('_','')))){
             if(!previousChat.isBuyingRequest){
               const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code then type \'buy\' first.'});
               return res.send(true); 
             }
-            const carts = await Cart.find({
-              userNumber: remoteId,
-              status:'inCart', 
-              _id: { $ne: previousChat?.cartId },
-              product : {$ne: previousChat.text},
-              updatedAt: { $gte: sessionStartTime, $lt: nowTime }
-            });
-            console.log('carts',carts)
-            let grandTotal = 0;
-            carts?.forEach(item => grandTotal += parseInt(item?.total));
-
-            let product = useSet.json.find(obj => obj?.key === previousChat.text);
-            const previousCart = await Cart.findOne({
-              userNumber: remoteId,
-              product : previousChat.text,
-              instance_id : messageObject?.instance_id,
-              status : 'inCart',
-              updatedAt: { $gte: sessionStartTime, $lt: nowTime }
-            });
-            if(previousCart){
-              previousCart.quantity = message.replace('_','');
-              previousCart.total = (+product?.price)*(+message.replace('_',''));
-              let cartSummary = `*Your Total till now :* ${+grandTotal+(+previousCart.total)}\r\n`;
-              const replyMessage = `✨✨ *Product ${previousChat.text.replace('_','')}* has been added to your cart\r\n` +
-              `${previousCart.product.replace('_','')} x ${previousCart.quantity} = *${previousCart.total}*  _( ${product.price} )_\r\n\r\n` +
-              cartSummary +
-              `Type *'${config.CartKeyword}'* to check your cart` ;
-              
-              await previousCart.save()
-              const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
-              return res.send(true);
-
-            }else{
-
-              const newCart = { 
-                userNumber: remoteId,
-                product : previousChat.text,
-                price : product?.price,
-                quantity : message.replace('_',''),
-                total: (+product?.price)*(+message.replace('_','')),
-                status : 'inCart',
-                instance_id : messageObject?.instance_id
-              }
-              let cartSummary = `*Your Total till now :* ${+grandTotal+(+newCart.total)}\r\n`;
-              const replyMessage = `✨ *Product ${previousChat.text.replace('_','')}* has been added to your cart\r\n` +
-              `${newCart.product.replace('_','')} x ${newCart.quantity} = *${newCart.total}*  _( ${newCart.price} each )_\r\n\r\n` +
-              cartSummary + `Type *'${config.CartKeyword}'* to check your cart` ;
-  
-              const cartData = await new Cart(newCart).save();
-  
-              const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
-              return res.send(true);
-            }
+            await handleCart(remoteId,useSet, previousChat, sessionStartTime, nowTime, message, messageObject,
+              sendMessageObj, config)
+              return res.send('cart updated')
             
           }
           if(message === '_' + config.CartKeyword.toLowerCase()){
@@ -303,8 +262,6 @@ const recieveMessages = async (req, res)=>{
               if (err) return console.log(err);
               console.log('PDF created successfully:', res.filename);
             });
-            console.log(contact, carts)
-
             
             sendMessageObj.type='media',
             sendMessageObj.media_url= process.env.IMAGE_URL + filePath,
@@ -314,6 +271,54 @@ const recieveMessages = async (req, res)=>{
 
             const response = await sendMessageFunc({...sendMessageObj,message });
             return res.send(true);
+          }
+          if(/^_search\b(.*)?$/.test(message)){
+            let cleanedMessage = message.replace(/^_search\b\s*/i, '').trim();
+
+            const messageArr = cleanedMessage.split(/[- ]+/);
+
+            const pluralToSingular = word => {
+              if (word.endsWith('s')) {
+                return word.slice(0, -1);
+              }
+              return word;
+            };
+            
+            const normalizeString = str => str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            
+            const singularMessageArr = messageArr.map(part => pluralToSingular(normalizeString(part)));
+            
+            let matchedObjects = useSet.json.filter(obj => {
+              const keyLower = normalizeString(obj?.key || '');
+              const valueLower = normalizeString(obj?.value || '');
+            
+              // Function to check for normalized and singular matches
+              const matchesValue = part => valueLower.includes(part);
+            
+              // Check if the key matches exactly or if the normalized value contains any of the singular parts
+              const matchesKey = keyLower === normalizeString(cleanedMessage);
+              const matchesAnyValuePart = singularMessageArr.some(part => matchesValue(part));
+            
+              return (matchesKey || matchesAnyValuePart) && obj.price != null;
+            });
+
+            let replyMessage = `Showing result for Search : *${message.replace(/^_search\b\s*/i, '')}* \r\n`;
+            matchedObjects.forEach((item, i) => {
+                replyMessage += `${i+1}) ${item.key} - ${item.value}\r\n`;
+            });
+
+            if(!matchedObjects.length){
+              replyMessage += `No products found\r\n`;
+            }
+
+            if(matchedObjects.length){
+              replyMessage += `\r\nType *Product Code* to buy`
+            }
+
+            const response = await sendMessageFunc({...sendMessageObj,message: replyMessage});
+            return res.send(true);  
+
+
           }
           if(/_remove/i.test(message)){
             const product = message.split(' ')
@@ -400,8 +405,7 @@ const recieveMessages = async (req, res)=>{
 const sendMessageFunc = async (message)=>{
   console.log('message',message)
   const url = process.env.LOGIN_CB_API
-  const access_token = process.env.ACCESS_TOKEN_CB
-  const response = await axios.get(`${url}/send`,{params:{...message,access_token}})
+  const response = await axios.get(`${url}/send`,{params:{...message}})
   return true;
 }
 
@@ -500,101 +504,69 @@ const getReport = async (req, res)=>{
   fileStream.pipe(res);
 }
 
+async function handleCart (remoteId,useSet, previousChat, sessionStartTime, nowTime, message, messageObject,
+  sendMessageObj, config) {
+  const carts = await Cart.find({
+    userNumber: remoteId,
+    status:'inCart', 
+    _id: { $ne: previousChat?.cartId },
+    product : {$ne: previousChat.text},
+    updatedAt: { $gte: sessionStartTime, $lt: nowTime }
+  });
+  console.log('carts',carts)
+  let grandTotal = 0;
+  carts?.forEach(item => grandTotal += parseInt(item?.total));
 
-async function getReportdataByTime(startDate, endDate, id){
+  let product = useSet.json.find(obj => obj?.key === previousChat.text);
+  const previousCart = await Cart.findOne({
+    userNumber: remoteId,
+    product : previousChat.text,
+    instance_id : messageObject?.instance_id,
+    status : 'inCart',
+    updatedAt: { $gte: sessionStartTime, $lt: nowTime }
+  });
 
-  let dateFilter = {};
-  if (startDate && endDate) { // If both startDate and endDate are defined, add a date range filter
-    dateFilter = {
-        "updatedAt": {
-            $gte: startDate,
-            $lt: endDate
-        }
-    };
-  }
+  if(previousCart){
 
+    previousCart.quantity = message.replace('_','');
+    previousCart.total = (+product?.price)*(+message.replace('_',''));
+    let cartSummary = `Cart Total : ${+grandTotal+(+previousCart.total)}\r\n`;
 
-  let query =[
-    {$match: { instance_id:id ,...dateFilter, isValid:true } },
-    {$lookup : {
-      from: 'contacts',
-      localField: 'requestedITS',
-      foreignField: 'ITS',
-      as: 'contact'
-    }},
-    {$lookup : {
-      from: 'instances',
-      localField: 'instance_id',
-      foreignField: 'instance_id',
-      as: 'instance'
-    }},
-    {$unwind:{
-      path: '$instance',
-      preserveNullAndEmptyArrays: true
-    }},
-    {$unwind:{
-      path: '$contact',
-      preserveNullAndEmptyArrays: true
-    }},
-    {
-      $addFields: {
-        PhoneNumber: { $toString: "$contact.number" }, // Convert to string
-        location: {
-          $let: {
-            vars: {
-              lastKey: {
-                $arrayElemAt: [
-                  { $objectToArray: "$otherMessages" }, // Convert otherMessages object to array of key-value pairs
-                  { $subtract: [{ $size: { $objectToArray: "$otherMessages" } }, 1] } // Get the index of the last element
-                ]
-              }
-            },
-            in: { $toDouble: "$$lastKey.v" } // Convert the value of the last element to double
-          }
-        }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        Name: '$contact.name',
-        PhoneNumber: 1,
-        ITS: '$contact.ITS',
-        Time: '$updatedAt',
-        Response: '$finalResponse',
-        updatedAt: { $dateToString: { format: "%m %d %Y", date: "$updatedAt" } },
-        location: 1
-      }
+    const replyMessage = `*${product.value}*\r\n has been added to your cart\r\n` +
+    `${previousCart.product.replace('_','').toUpperCase()} x ${previousCart.quantity} = *${previousCart.total}*  _( ${product.price} each )_\r\n\r\n` +
+    cartSummary +
+    `Type *${config.CartKeyword}* to check your cart or to add new product or search new product enter *search product code | product name *`;
+    
+    await previousCart.save()
+    const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
+    return res.send(true);
+
+  }else{
+
+    const newCart = { 
+      userNumber: remoteId,
+      product : previousChat.text,
+      price : product?.price,
+      quantity : message.replace('_',''),
+      total: (+product?.price)*(+message.replace('_','')),
+      status : 'inCart',
+      instance_id : messageObject?.instance_id
     }
-  ]
-  const data = await ChatLogs.aggregate(query);
-  return data ;
-}
 
-function isTimeInRange(startTime, endTime, timezoneOffset = 0) {
-  // Get the current date/time in UTC
-  const nowUtc = new Date();
-  console.log({startTime, endTime})
-  // Convert it to the target timezone
-  const now = new Date(nowUtc.getTime() + timezoneOffset * 60 * 60 * 1000);
+    let cartSummary = `Cart Total : ${+grandTotal+(+newCart.total)}\r\n`;
+    const replyMessage = `*${product.value}*\r\n has been added to your cart\r\n` +
+    `${newCart.product.replace('_','').toUpperCase()} x ${newCart.quantity} = *${newCart.total}*  _( ${newCart.price} each )_\r\n\r\n` +
+    cartSummary + `Type *'${config.CartKeyword}'* to check your cart or to add new product or search new product enter *search product code | product name ` ;
 
-  // Parse start and end times as Date objects
-  const start = new Date(startTime);
-  start.setUTCDate(nowUtc.getUTCDate());
-  start.setUTCMonth(nowUtc.getUTCMonth());
-  start.setUTCFullYear(nowUtc.getUTCFullYear());
+    const cartData = await new Cart(newCart).save();
 
-  const end = new Date(endTime);
-  end.setUTCDate(nowUtc.getUTCDate());
-  end.setUTCMonth(nowUtc.getUTCMonth());
-  end.setUTCFullYear(nowUtc.getUTCFullYear());
-  console.log(now,start,end)
-  // Check if the current time falls within the start and end times
-  return now >= start && now <= end;
+    const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
+    return true
+
+  }
 }
 
 function createInvoice (number) {
-
 }
 
 module.exports = {

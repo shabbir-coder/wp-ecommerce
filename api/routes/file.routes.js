@@ -51,7 +51,7 @@ const FileStorage = multer.diskStorage({
         });
     },
     filename: function (req, file, cb) {
-        const safeFileName = file.originalname.trim().replace(/\s+/g, '');
+        const safeFileName = file.originalname.trim().toLowerCase().replace(/\s+/g, '');
         cb(null, safeFileName); 
     }
 });
