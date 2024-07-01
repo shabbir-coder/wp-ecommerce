@@ -84,9 +84,15 @@ const recieveMessages = async (req, res)=>{
               newMessage.usedFile = set._id;
               const savedMessage = new Message(newMessage);
               await savedMessage.save();
+              const contactFound = await Contact.findOne({number: remoteId})
+              let replyMsg = ''
+              if(contactFound){
+                replyMsg += `*Hi ${contactFound.name}*, welcome back \r\n\r\n`
+              }
+              replyMsg += set.json.find(obj => obj?.key === firstKey)?.value
               const response = await sendMessageFunc(
                 {...sendMessageObj,
-                  message: set.json.find(obj => obj?.key === firstKey)?.value});
+                  message: replyMsg});
               return res.send(true);
           } else {
               // const response = await sendMessageFunc({...sendMessageObj, message: `Send ${firstKey.replace('_', '')} to start your chat`});
@@ -117,8 +123,8 @@ const recieveMessages = async (req, res)=>{
               sendMessageObj.type='media',
               sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
               sendMessageObj.filename = image?.images[0]?.imageName
-              replyObj.value += '\nType *Buy-Quantity* (nos of units) to Purchase the product or Type *Detail* for more information'
             }
+            replyObj.value += '\nType *Buy-Quantity* (nos of units) to Purchase the product or Type *Detail* for more information'
           }
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
           const savedMessage = new Message(newMessage);
@@ -143,21 +149,88 @@ const recieveMessages = async (req, res)=>{
             }
             return res.send(true); 
           }
-          if(/^(1000|[1-9][0-9]?)$/.test(parseInt(message.replace('_','')))){
-            if(!previousChat.isBuyingRequest){
-              const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code then type \'buy\' first.'});
-              return res.send(true); 
-            }
-            await handleCart(remoteId,useSet, previousChat, sessionStartTime, nowTime, message, messageObject,
+          if(/^(1000000|[1-9][0-9]?)$/.test(parseInt(message.replace('_','')))){
+            if(previousChat.isBuyingRequest){
+              await handleCart(remoteId,useSet, previousChat, sessionStartTime, nowTime, message, messageObject,
               sendMessageObj, config)
               return res.send('cart updated')
+            }
+            if(previousChat.isSearchingRequest){
+
+              let cleanedMessage = previousChat.text.replace(/^_search\b\s*/i, '').trim();
+
+              const messageArr = cleanedMessage.split(/[- ]+/);
+
+              const pluralToSingular = word => {
+                if (word.endsWith('s')) {
+                  return word.slice(0, -1);
+                }
+                return word;
+              };
+              
+              const normalizeString = str => str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              
+              const singularMessageArr = messageArr.map(part => pluralToSingular(normalizeString(part)));
+              
+              let matchedObjects = useSet.json.filter(obj => {
+                const keyLower = normalizeString(obj?.key || '');
+                const valueLower = normalizeString(obj?.value || '');
+              
+                // Function to check for normalized and singular matches
+                const matchesValue = part => valueLower.includes(part);
+              
+                // Check if the key matches exactly or if the normalized value contains any of the singular parts
+                const matchesKey = keyLower === normalizeString(cleanedMessage);
+                const matchesAnyValuePart = singularMessageArr.some(part => matchesValue(part));
+              
+                return (matchesKey || matchesAnyValuePart) && obj.price != null;
+              });
+
+              const index = message.replace('_','') -1
+              const replyObj = matchedObjects[index]
+
+              if(matchedObjects[index]){
+
+                const image = await Images.findOne(
+                  { 
+                    fileId: useSet._id,
+                    "images.keyName": message.replace('_', '')
+                  },
+                  { 
+                    "images.$": 1 
+                  }
+                );
+
+                if(image){
+                  sendMessageObj.type='media',
+                  sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
+                  sendMessageObj.filename = image?.images[0]?.imageName
+                }
+                replyObj.value += '\nType *Buy-Quantity* (nos of units) to Purchase the product or Type *Detail* for more information'
+                newMessage.text = replyObj.key;
+
+                const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
+                const savedMessage = new Message(newMessage);
+                await savedMessage.save();
+                return res.send(true);
+
+              }else{
+                console.log('project not found')
+              }
+
+
+              return res.send('in search')
+            }
+            const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code then type \'buy\' first.'});
+            return res.send(true); 
+           
             
           }
           if(message === '_' + config.CartKeyword.toLowerCase()){
 
             const carts = await Cart.find({userNumber: remoteId, status:'inCart', updatedAt: { $gte: sessionStartTime, $lt: nowTime }});
             if(!carts.length){
-              const response = await sendMessageFunc({...sendMessageObj,message: 'No cart found!, Type \'Products\' and start shopping '});
+              const response = await sendMessageFunc({...sendMessageObj,message: `No cart found!, Type *${useSet.startingKeyword}* and start shopping `});
               return res.send(true);    
             }
             let grandTotal = 0;
@@ -304,7 +377,7 @@ const recieveMessages = async (req, res)=>{
 
             let replyMessage = `Showing result for Search : *${message.replace(/^_search\b\s*/i, '')}* \r\n`;
             matchedObjects.forEach((item, i) => {
-                replyMessage += `${i+1}) ${item.key} - ${item.value}\r\n`;
+                replyMessage += `${i+1}) ${item.value}\r\n`;
             });
 
             if(!matchedObjects.length){
@@ -312,9 +385,11 @@ const recieveMessages = async (req, res)=>{
             }
 
             if(matchedObjects.length){
-              replyMessage += `\r\nType *Product Code* to buy`
+              replyMessage += `\r\nType *serial number* to buy`
             }
-
+            newMessage.isSearchingRequest=true;
+            await new Message(newMessage).save();
+            
             const response = await sendMessageFunc({...sendMessageObj,message: replyMessage});
             return res.send(true);  
 

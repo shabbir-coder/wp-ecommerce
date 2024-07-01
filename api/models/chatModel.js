@@ -37,6 +37,7 @@ const chatSchema = new mongoose.Schema({
   text: { type: String},
   type: { type: String},
   isBuyingRequest: { type: Boolean, default:false},
+  isSearchingRequest: { type: Boolean, default:false},
   // Add other message-related fields as needed
 }, { timestamps: true }
 );
