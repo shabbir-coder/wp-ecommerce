@@ -38,6 +38,7 @@ const chatSchema = new mongoose.Schema({
   type: { type: String},
   isBuyingRequest: { type: Boolean, default:false},
   isSearchingRequest: { type: Boolean, default:false},
+  lastViewedColumn: { type: Number}
   // Add other message-related fields as needed
 }, { timestamps: true }
 );

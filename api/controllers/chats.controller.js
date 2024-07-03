@@ -106,7 +106,10 @@ const recieveMessages = async (req, res)=>{
           return res.send(true)  
         }
         newMessage.usedFile = useSet._id;
-        let replyObj = useSet.json.find(obj => obj?.key === message);
+        let index = useSet.json.findIndex(obj => obj?.key === message);
+        newMessage.lastViewedColumn = index;
+
+        let replyObj = useSet.json[index]
         if(replyObj){
           if(replyObj?.price){
             const image = await Images.findOne(
@@ -118,7 +121,6 @@ const recieveMessages = async (req, res)=>{
                 "images.$": 1 
               }
             );
-            console.log(image?.images[0])
             if(image){
               sendMessageObj.type='media',
               sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
@@ -149,7 +151,7 @@ const recieveMessages = async (req, res)=>{
             }
             return res.send(true); 
           }
-          if(/^(1000000|[1-9][0-9]?)$/.test(parseInt(message.replace('_','')))){
+          if(!isNaN(+message.replace('_','')) && /^[0-9]+$/.test(parseInt(message.replace('_','')))){
             if(previousChat.isBuyingRequest){
               await handleCart(remoteId,useSet, previousChat, sessionStartTime, nowTime, message, messageObject,
               sendMessageObj, config)
@@ -221,9 +223,39 @@ const recieveMessages = async (req, res)=>{
 
               return res.send('in search')
             }
+            if(previousChat.lastViewedColumn){
+              const viewedCOlumn = useSet.json[previousChat.lastViewedColumn]
+              if(viewedCOlumn && viewedCOlumn.maximumSequence && viewedCOlumn.maximumSequence >= +message.replace('_','')){
+                let index = +previousChat.lastViewedColumn + +message.replace('_','');
+                newMessage.lastViewedColumn = index;
+                let replyObj = useSet.json[index]
+                if(replyObj){
+                  if(replyObj?.price){
+                    const image = await Images.findOne(
+                      { 
+                        fileId: useSet._id,
+                        "images.keyName": message.replace('_', '')
+                      },
+                      { 
+                        "images.$": 1 
+                      }
+                    );
+                    if(image){
+                      sendMessageObj.type='media',
+                      sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
+                      sendMessageObj.filename = image?.images[0]?.imageName
+                    }
+                    replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
+                  }
+                newMessage.text = replyObj.key
+                const savedMessage = new Message(newMessage);
+                await savedMessage.save();
+                const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
+                return res.send(true);
+              }
+            }}
             const response = await sendMessageFunc({...sendMessageObj, message: 'Product not selected , type appropriate product code then type \'buy\' first.'});
             return res.send(true); 
-           
             
           }
           if(message === '_' + config.CartKeyword.toLowerCase()){
@@ -408,20 +440,24 @@ const recieveMessages = async (req, res)=>{
               return res.send(true);  
             }
             const carts = await Cart.find({userNumber: remoteId, status:'inCart', updatedAt: { $gte: sessionStartTime, $lt: nowTime }});
+
+            if(carts.length<product[1]){
+              const response = await sendMessageFunc({...sendMessageObj,message: `*Product* *not found* in your ${config?.CartKeyword}`});
+              return res.send(true);  
+            }
             const cart = await Cart.findOne({
               userNumber: remoteId,
-              product:'_'+carts[product[1]-1].product,
+              product:carts[product[1]-1].product,
               status:'inCart',
               updatedAt: { $gte: sessionStartTime, $lt: nowTime }
             });
-            console.log(cart)
+
             if(!cart){
               const response = await sendMessageFunc({...sendMessageObj,message: `*Product-${product[1]}* *not found* in your ${config?.CartKeyword}`});
               return res.send(true);  
             }else{
               cart.isRemoved = true;
               cart.status = 'isRemoved'
-              console.log(cart)
               await cart.save();
 
               let cartSummary = `*Product-${product[1]}* *removed* from your ${config?.CartKeyword}`;
@@ -444,7 +480,8 @@ const recieveMessages = async (req, res)=>{
             return res.send(true);
 
             }
-          }else{
+          }
+          else{
             const activeContact = await Contact.findOne({number: remoteId, adressTrackingActive: true});
             if(activeContact){
               const trackSteps = ['name', 'address', 'city', 'state', 'pinCode'];
