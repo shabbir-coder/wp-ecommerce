@@ -124,7 +124,7 @@ const recieveMessages = async (req, res)=>{
               sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
               sendMessageObj.filename = image?.images[0]?.imageName
             }
-            replyObj.value += '\nType *Buy-Quantity* (nos of units) to Purchase the product or Type *Detail* for more information'
+            replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
           }
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
           const savedMessage = new Message(newMessage);
@@ -206,7 +206,7 @@ const recieveMessages = async (req, res)=>{
                   sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
                   sendMessageObj.filename = image?.images[0]?.imageName
                 }
-                replyObj.value += '\nType *Buy-Quantity* (nos of units) to Purchase the product or Type *Detail* for more information'
+                replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
                 newMessage.text = replyObj.key;
 
                 const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
@@ -237,9 +237,9 @@ const recieveMessages = async (req, res)=>{
             carts.forEach(item => grandTotal += parseInt(item.total));
             let cartSummary = "_product ---- qty x price = total_\r\n\r\n";
             carts.forEach((item, i) => {
-                cartSummary += `${i+1} - ${item.product}_ ------ ${item.quantity} x ${item.price} ==== *${item.total}*\r\n`;
+                cartSummary += `${i+1} - ${item.product}_ ------ ${item.quantity} x ₹ ${item.price} ==== ₹ *${item.total}*\r\n`;
             });
-            cartSummary += `\r\n*Grand Total: ${grandTotal}*`;
+            cartSummary += `\r\n*Grand Total: ₹${grandTotal}*`;
             cartSummary += `\r\n\r\nTo remove product from your ${config?.CartKeyword}, type *remove product code* . Example 'remove de1p1'.`;
             cartSummary += `\r\nType *${config.paymentKeyword}* to pay and confirm your order`
             const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
@@ -261,9 +261,9 @@ const recieveMessages = async (req, res)=>{
                 let userAddress = `*Hi ${contact.name.charAt(0).toUpperCase() + contact.name.slice(1)}*`;
                 userAddress += `\n\rYour Delivery *Address*`
                 userAddress += `\n\r${contact.address},`
-                userAddress += `\n\r${contact.city} - ${contact.pinCode}`;
+                userAddress += `\n\r${contact.city} - ${contact?.pinCode||'NA'}`;
                 userAddress += `\n\r${contact.state}`;
-                userAddress += `\n\rCheck your address once, Type "Confirm" to proceed. Type "change" to change`
+                userAddress += `\n\rCheck your address once, Type *Confirm* to proceed. Type *change* to change`
                 console.log('contact', contact);
                 const response = await sendMessageFunc({...sendMessageObj,message: userAddress});
                 return res.send(true); 
@@ -286,7 +286,7 @@ const recieveMessages = async (req, res)=>{
             const subTotal = carts.reduce((acc, item) => acc + parseFloat(item.total), 0).toFixed(2)
             const gst = 0;
             const otherCharges = 0;
-            const lastInvoice = await Invoice.findOne().sort({ createdAt: -1 }).exec();
+            const lastInvoice = await Invoice.findOne().sort({ updatedAt: -1 }).exec();
             const lastInvoiceNumber = lastInvoice ? parseInt(lastInvoice.invoiceNumber.replace('INV', '')) : 0;
             const newInvoiceNumber = `INV${String(lastInvoiceNumber + 1).padStart(7, '0')}`;
 
@@ -322,7 +322,9 @@ const recieveMessages = async (req, res)=>{
             const options = {
               format: 'A4'
             };
-          
+            await new Invoice(templateVar).save();
+            templateVar["totalAmount"] = `₹ ${templateVar.totalAmount}`
+            
             const templateSource = fs.readFileSync(`${process.cwd()}/api/assets/pdfs/invoice.hbs`, 'utf8');
             const template = handlebars.compile(templateSource);
             const html = template(templateVar);
@@ -330,19 +332,23 @@ const recieveMessages = async (req, res)=>{
             const filePath = `/uploads/pdfs/${fileName}`
             templateVar.filePath = filePath;
 
-            await new Invoice(templateVar).save();
             pdf.create(html, options).toFile(`${process.cwd()}${filePath}`, function(err, res) {
               if (err) return console.log(err);
               console.log('PDF created successfully:', res.filename);
+              sendMessageObj.type='media',
+              sendMessageObj.media_url= process.env.IMAGE_URL + filePath,
+              sendMessageObj.filename = fileName
+              const message = 'Please Download your Invoice\nThanks for order'
+
+              sendMessageFunc({...sendMessageObj, message })
+              .then(response => {
+                  console.log('Message sent successfully:', response);
+              })
+              .catch(err => {
+                  console.error('Error sending message:', err);
+              });
             });
             
-            sendMessageObj.type='media',
-            sendMessageObj.media_url= process.env.IMAGE_URL + filePath,
-            sendMessageObj.filename = fileName
-            const message = 'Please Download your Invoice\nThanks for order'
-          
-
-            const response = await sendMessageFunc({...sendMessageObj,message });
             return res.send(true);
           }
           if(/^_search\b(.*)?$/.test(message)){
@@ -607,8 +613,8 @@ async function handleCart (remoteId,useSet, previousChat, sessionStartTime, nowT
     previousCart.total = (+product?.price)*(+message.replace('_',''));
     let cartSummary = `Cart Total : ${+grandTotal+(+previousCart.total)}\r\n`;
 
-    const replyMessage = `*${product.value}*\r\n has been added to your cart\r\n` +
-    `${previousCart.product.replace('_','').toUpperCase()} x ${previousCart.quantity} = *${previousCart.total}*  _( ${product.price} each )_\r\n\r\n` +
+    const replyMessage = `*${product.value}*\r\n\r\n has been added to your cart\r\n` +
+    `${previousCart.product.replace('_','').toUpperCase()} x ${previousCart.quantity} = ₹ *${previousCart.total}*  _( ₹${product.price} each )_\r\n\r\n` +
     cartSummary +
     `Type *${config.CartKeyword}* to check your cart or to add new product or search new product enter *search product code | product name *`;
     
@@ -628,9 +634,9 @@ async function handleCart (remoteId,useSet, previousChat, sessionStartTime, nowT
       instance_id : messageObject?.instance_id
     }
 
-    let cartSummary = `Cart Total : ${+grandTotal+(+newCart.total)}\r\n`;
-    const replyMessage = `*${product.value}*\r\n has been added to your cart\r\n` +
-    `${newCart.product.replace('_','').toUpperCase()} x ${newCart.quantity} = *${newCart.total}*  _( ${newCart.price} each )_\r\n\r\n` +
+    let cartSummary = `Cart Total : ₹${+grandTotal+(+newCart.total)}\r\n`;
+    const replyMessage = `*${product.value}*\r\n\r\n has been added to your cart\r\n` +
+    `${newCart.product.replace('_','').toUpperCase()} x ${newCart.quantity} = ₹ *${newCart.total}*  _( ₹${newCart.price} each )_\r\n\r\n` +
     cartSummary + `Type *'${config.CartKeyword}'* to check your cart or to add new product or search new product enter *search product code | product name ` ;
 
     const cartData = await new Cart(newCart).save();

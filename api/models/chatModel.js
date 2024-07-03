@@ -88,6 +88,7 @@ const invoiceSchema = new mongoose.Schema({
   paymentDate: { type: String },
   outstandingAmount: { type: String },
   filePath: { type: String },
+  updatedAt: {type : Date, default: Date.now()}
 }, {Timestamp: true});
 
 
