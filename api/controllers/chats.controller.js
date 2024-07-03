@@ -240,8 +240,8 @@ const recieveMessages = async (req, res)=>{
                 cartSummary += `${i+1} - ${item.product}_ ------ ${item.quantity} x ₹ ${item.price} ==== ₹ *${item.total}*\r\n`;
             });
             cartSummary += `\r\n*Grand Total: ₹${grandTotal}*`;
-            cartSummary += `\r\n\r\nTo remove product from your ${config?.CartKeyword}, type *remove product code* . Example 'remove de1p1'.`;
-            cartSummary += `\r\nType *${config.paymentKeyword}* to pay and confirm your order`
+            cartSummary += `\r\n\r\nTo remove product from your ${config?.CartKeyword}, type *remove serial nos*.`;
+            cartSummary += `\r\n\r\nType *${config.paymentKeyword}* to pay and confirm your order.`
             const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
             return res.send(true);  
           }
@@ -407,9 +407,10 @@ const recieveMessages = async (req, res)=>{
               const response = await sendMessageFunc({...sendMessageObj,message: `*Product* *not found* in your ${config?.CartKeyword}`});
               return res.send(true);  
             }
+            const carts = await Cart.find({userNumber: remoteId, status:'inCart', updatedAt: { $gte: sessionStartTime, $lt: nowTime }});
             const cart = await Cart.findOne({
               userNumber: remoteId,
-              product:'_'+product[1],
+              product:'_'+carts[product[1]-1].product,
               status:'inCart',
               updatedAt: { $gte: sessionStartTime, $lt: nowTime }
             });
@@ -437,8 +438,8 @@ const recieveMessages = async (req, res)=>{
                 cartSummary += `${i+1} - ${item.product}_ ------ ${item.quantity} x ${item.price} ==== *${item.total}*\r\n`;
             });
             cartSummary += `\r\n*Grand Total: ${grandTotal}*`;
-            cartSummary += `\r\n\r\nTo remove product from your ${config?.CartKeyword}, type *remove product code* . Example 'remove de1p1'.`;
-            cartSummary += `\r\nType *${config.paymentKeyword}* to pay and confirm your order`
+            cartSummary += `\r\n\r\nTo remove product from your *${config?.CartKeyword}*, type *remove serial nos*`;
+            cartSummary += `\r\n\r\nType *${config.paymentKeyword}* to pay and confirm your order.`
             const response = await sendMessageFunc({...sendMessageObj,message: cartSummary});
             return res.send(true);
 
@@ -459,7 +460,7 @@ const recieveMessages = async (req, res)=>{
                 userAddress += `\n\r${activeContact.address},`
                 userAddress += `\n\r${activeContact.city} - ${activeContact.pinCode}`;
                 userAddress += `\n\r${activeContact.state}`;
-                userAddress += `\n\rType "Confirm" to proceed. Type "change" to change`
+                userAddress += `\n\rType *Confirm* to proceed. Type *change* to change`
                 const response = await sendMessageFunc({...sendMessageObj,message: userAddress });
                 return res.send(true);
               }
@@ -611,12 +612,12 @@ async function handleCart (remoteId,useSet, previousChat, sessionStartTime, nowT
 
     previousCart.quantity = message.replace('_','');
     previousCart.total = (+product?.price)*(+message.replace('_',''));
-    let cartSummary = `Cart Total : ${+grandTotal+(+previousCart.total)}\r\n`;
+    let cartSummary = `Cart Total : ${+grandTotal+(+previousCart.total)}\r\n\r\n`;
 
-    const replyMessage = `*${product.value}*\r\n\r\n has been added to your cart\r\n` +
+    const replyMessage = `*${product.value.replaceAll('\n', ' ')}*\r\n\r\n has been added to your cart\r\n` +
     `${previousCart.product.replace('_','').toUpperCase()} x ${previousCart.quantity} = ₹ *${previousCart.total}*  _( ₹${product.price} each )_\r\n\r\n` +
     cartSummary +
-    `Type *${config.CartKeyword}* to check your cart or to add new product or search new product enter *search product code | product name *`;
+    `Type *${config.CartKeyword}* to check your cart or \r\n\r\nTo add new product or search new product enter *search product code | product name*`;
     
     await previousCart.save()
     const response = await sendMessageFunc({...sendMessageObj, message: replyMessage});
@@ -634,10 +635,10 @@ async function handleCart (remoteId,useSet, previousChat, sessionStartTime, nowT
       instance_id : messageObject?.instance_id
     }
 
-    let cartSummary = `Cart Total : ₹${+grandTotal+(+newCart.total)}\r\n`;
-    const replyMessage = `*${product.value}*\r\n\r\n has been added to your cart\r\n` +
+    let cartSummary = `Cart Total : ₹${+grandTotal+(+newCart.total)}\r\n\r\n`;
+    const replyMessage = `*${product.value.replaceAll('\n', ' ')}*\r\n\r\n has been added to your cart\r\n` +
     `${newCart.product.replace('_','').toUpperCase()} x ${newCart.quantity} = ₹ *${newCart.total}*  _( ₹${newCart.price} each )_\r\n\r\n` +
-    cartSummary + `Type *'${config.CartKeyword}'* to check your cart or to add new product or search new product enter *search product code | product name ` ;
+    cartSummary + `Type *${config.CartKeyword}* to check your cart or \r\n\r\nTo add new product or search new product enter *search product code | product name* ` ;
 
     const cartData = await new Cart(newCart).save();
 
