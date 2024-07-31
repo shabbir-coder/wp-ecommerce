@@ -111,7 +111,7 @@ const recieveMessages = async (req, res)=>{
 
         let replyObj = useSet.json[index]
         if(replyObj){
-          if(replyObj?.price){
+          if(replyObj?.price && replyObj?.price!='no'){
             const image = await Images.findOne(
               { 
                 fileId: useSet._id,
@@ -126,7 +126,12 @@ const recieveMessages = async (req, res)=>{
               sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
               sendMessageObj.filename = image?.images[0]?.imageName
             }
-            replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
+            // if(replyObj?.price!='no' && replyObj?.price){
+            // }
+            replyObj.value += '\r\n\r\nType 1 *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
+          }
+          else if(!replyObj?.price){
+            replyObj.value += '\r\n\r\nType 1 *serial nos* to view the product'
           }
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
           const savedMessage = new Message(newMessage);
@@ -245,7 +250,7 @@ const recieveMessages = async (req, res)=>{
                       sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
                       sendMessageObj.filename = image?.images[0]?.imageName
                     }
-                    replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
+                    replyObj.value += `\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information\r\n\r\n Type *${previousChat.text.replace('_','')}* to get back.`
                   }
                 newMessage.text = replyObj.key
                 const savedMessage = new Message(newMessage);
@@ -480,6 +485,35 @@ const recieveMessages = async (req, res)=>{
             return res.send(true);
 
             }
+          }
+          if(message==='_detail'){
+            console.log('oooo', previousChat)
+            let index = useSet.json.findIndex(obj => obj?.key === previousChat.text);
+            
+            let replyObj = useSet.json[index]
+            console.log(replyObj)
+            const image = await Images.findOne(
+              { 
+                fileId: useSet._id,
+                "images.keyName": previousChat.text.replace('_', '')
+              },
+              { 
+                "images.$": 1 
+              }
+            );
+            if(image){
+              sendMessageObj.type='media',
+              sendMessageObj.media_url= process.env.IMAGE_URL + image?.images[0]?.imageUrl,
+              sendMessageObj.filename = image?.images[0]?.imageName
+            }
+            if(replyObj?.price!='no' && replyObj?.price){
+              replyObj.value += `\r\n Price : ₹${replyObj?.price}`
+            }
+            replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product'
+            const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
+            // const savedMessage = new Message(newMessage);
+            // await savedMessage.save();
+            return res.send(true);
           }
           else{
             const activeContact = await Contact.findOne({number: remoteId, adressTrackingActive: true});

@@ -90,7 +90,7 @@ const invoiceSchema = new mongoose.Schema({
   outstandingAmount: { type: String },
   filePath: { type: String },
   updatedAt: {type : Date, default: Date.now()}
-}, {Timestamp: true});
+}, {timestamps: true});
 
 
 
