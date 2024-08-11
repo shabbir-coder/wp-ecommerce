@@ -17,7 +17,7 @@ const contactSchema = new mongoose.Schema({
   address: { type: String, required: false },
   city: {type: String},
   state: {type: String},
-  pinCode: {type: Number}
+  pinCode: {type: String}
 }, {timestamps: true});
 
 const chatLogs = new mongoose.Schema({

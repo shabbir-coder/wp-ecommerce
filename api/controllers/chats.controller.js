@@ -128,11 +128,12 @@ const recieveMessages = async (req, res)=>{
             }
             // if(replyObj?.price!='no' && replyObj?.price){
             // }
-            replyObj.value += '\r\n\r\nType 1 *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
+            replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
           }
           else if(!replyObj?.price){
-            replyObj.value += '\r\n\r\nType 1 *serial nos* to view the product'
+            replyObj.value += '\r\n\r\nType *serial nos* to view the product'
           }
+          replyObj.value += '\r\n\r\nor Type *Search* <space> *word* to search. '
           const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
           const savedMessage = new Message(newMessage);
           await savedMessage.save();
@@ -190,7 +191,7 @@ const recieveMessages = async (req, res)=>{
                 const matchesKey = keyLower === normalizeString(cleanedMessage);
                 const matchesAnyValuePart = singularMessageArr.some(part => matchesValue(part));
               
-                return (matchesKey || matchesAnyValuePart) && obj.price != null;
+                return (matchesKey || matchesAnyValuePart) && !['no', null].includes(obj.price);
               });
 
               const index = message.replace('_','') -1
@@ -214,6 +215,8 @@ const recieveMessages = async (req, res)=>{
                   sendMessageObj.filename = image?.images[0]?.imageName
                 }
                 replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information'
+                replyObj.value += '\r\n\r\nor Type *Search* <space> *word* to search.'
+
                 newMessage.text = replyObj.key;
 
                 const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
@@ -252,6 +255,7 @@ const recieveMessages = async (req, res)=>{
                     }
                     replyObj.value += `\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product \r\n\r\n Type *Detail* for more information\r\n\r\n Type *${previousChat.text.replace('_','')}* to get back.`
                   }
+                  replyObj.value += '\r\n\r\nor Type *Search* <space> *word* to search.'
                 newMessage.text = replyObj.key
                 const savedMessage = new Message(newMessage);
                 await savedMessage.save();
@@ -415,12 +419,12 @@ const recieveMessages = async (req, res)=>{
               const matchesKey = keyLower === normalizeString(cleanedMessage);
               const matchesAnyValuePart = singularMessageArr.some(part => matchesValue(part));
             
-              return (matchesKey || matchesAnyValuePart) && obj.price != null;
+              return (matchesKey || matchesAnyValuePart) && !['no', null].includes(obj.price);
             });
 
             let replyMessage = `Showing result for Search : *${message.replace(/^_search\b\s*/i, '')}* \r\n`;
             matchedObjects.forEach((item, i) => {
-                replyMessage += `${i+1}) ${item.value}\r\n`;
+                replyMessage += `${i+1}) ${item.value} - ${item.price}\r\n`;
             });
 
             if(!matchedObjects.length){
@@ -429,6 +433,8 @@ const recieveMessages = async (req, res)=>{
 
             if(matchedObjects.length){
               replyMessage += `\r\nType *serial number* to buy`
+              replyMessage += '\r\n\r\nor Type *Search* <space> *word* to search more. '
+
             }
             newMessage.isSearchingRequest=true;
             await new Message(newMessage).save();
@@ -507,7 +513,7 @@ const recieveMessages = async (req, res)=>{
               sendMessageObj.filename = image?.images[0]?.imageName
             }
             if(replyObj?.price!='no' && replyObj?.price){
-              replyObj.value += `\r\n Price : ₹${replyObj?.price}`
+              replyObj.value += `\r\n*₹${replyObj?.price}*`
             }
             replyObj.value += '\r\n\r\nType *Buy-Quantity* (nos of units) to Purchase the product'
             const response = await sendMessageFunc({...sendMessageObj,message: replyObj.value});
